@@ -107,29 +107,122 @@
             cursor: not-allowed;
         }
 
-        /* Additional styling as needed */
+        /* Additional styling for modal buttons */
+        .modal-button {
+            padding: 0.5rem 1rem;
+            margin-right: 0.5rem;
+            background-color: #3182ce;
+            color: white;
+            border: none;
+            border-radius: 0.375rem;
+            cursor: pointer;
+            transition: background-color 0.3s;
+        }
+
+        .modal-button:hover {
+            background-color: #2b6cb0;
+        }
+
+        /* Iframe Styling */
+        #modal-iframe {
+            width: 100%;
+            height: 600px;
+            /* Increased from 500px */
+            border: none;
+            margin-top: 1rem;
+        }
+
+        /* Responsive adjustments for iframe */
+        @media (max-width: 768px) {
+            #modal-iframe {
+                height: 300px;
+            }
+        }
+
+        /* Button Styling Above Textfield */
+        .top-buttons {
+            display: flex;
+            gap: 1rem;
+        }
+
+        .top-buttons button {
+            padding: 0.75rem 1.5rem;
+            background-color: #3182ce;
+            color: white;
+            border: none;
+            border-radius: 9999px;
+            cursor: pointer;
+            transition: background-color 0.3s;
+            font-size: 1rem;
+        }
+
+        .top-buttons button:hover {
+            background-color: #2b6cb0;
+        }
+
+        .chat-container {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            z-index: 100;
+            /* Lebih tinggi dari modal */
+            width: 100%;
+            max-width: 400px;
+            padding: 1rem;
+        }
+
+        /* Responsif untuk ukuran layar kecil */
+        @media (max-width: 768px) {
+            .chat-container {
+                right: 10px;
+                left: 10px;
+                max-width: none;
+            }
+        }
     </style>
 @endsection
 
-
 @section('content')
     <!-- Video Background -->
-
     <div class="video-wrapper">
         <video src="{{ asset('assets/agent.mp4') }}" muted autoplay loop></video>
     </div>
 
 
+    <!-- Modal Section -->
+    <div id="modal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center hidden">
+        <div class="bg-white max-w-6xl w-full mx-auto p-6 rounded-lg relative">
+            <!-- Close Button -->
+            <button id="close-modal" class="text-red-600 text-2xl font-bold absolute top-4 right-4">&times;</button>
+
+            <!-- Modal Buttons -->
+            <div class="flex justify-center space-x-4">
+                <button class="modal-button" data-url="https://portal.pa-cirebon.go.id/">Portal</button>
+                <button class="modal-button" data-url="https://pa-cirebon.go.id/">PA Cirebon</button>
+            </div>
+
+            <!-- Iframe to Display Websites -->
+            <iframe id="modal-iframe" src=""></iframe>
+        </div>
+    </div>
+
+
     <!-- Main Container -->
     <div class="container mx-auto flex flex-col items-center justify-center min-h-screen p-4">
-        <br><br>
-        <br><br>
         <!-- Lottie Animation -->
         <div id="lottie-container" class="hidden mb-4">
             <!-- Lottie Animation will load here -->
         </div>
 
-        <!-- Input Chat -->
+        <!-- Input Chat and Top Buttons -->
+        <div class="top-buttons w-full flex justify-center">
+            <button type="button" id="open-portal" class="px-4 py-2">
+                Portal
+            </button>
+            <button type="button" id="open-pa-cirebon" class="px-4 py-2">
+                PA Cirebon
+            </button>
+        </div>
         <form id="chat-form"
             class="mt-8 rounded-full bg-neutral-200/80 dark:bg-neutral-800/80 flex items-center w-full max-w-3xl">
             <input id="chat-input" type="text" class="bg-transparent focus:outline-none p-4 w-full" required
@@ -161,7 +254,60 @@
 
     <!-- Audio Player for Responses -->
     <audio id="responseAudio"></audio>
+
+
+
+    <!-- Script to handle modal functionality -->
+    <script>
+        document.addEventListener('DOMContentLoaded', () => {
+            const modal = document.getElementById('modal');
+            const closeModalButton = document.getElementById('close-modal');
+            const modalButtons = document.querySelectorAll('.modal-button');
+            const modalIframe = document.getElementById('modal-iframe');
+
+            // Function to open modal with specified URL
+            function openModal(url) {
+                modalIframe.src = url;
+                modal.classList.remove('hidden');
+            }
+
+            // Add event listeners to modal buttons inside the modal
+            modalButtons.forEach(button => {
+                button.addEventListener('click', () => {
+                    const url = button.getAttribute('data-url');
+                    openModal(url);
+                });
+            });
+
+            // Close modal when clicking the close button
+            closeModalButton.addEventListener('click', () => {
+                modal.classList.add('hidden');
+                modalIframe.src = ''; // Clear iframe src when closing
+            });
+
+            // Close modal when clicking outside the modal content
+            window.addEventListener('click', (e) => {
+                if (e.target === modal) {
+                    modal.classList.add('hidden');
+                    modalIframe.src = ''; // Clear iframe src when closing
+                }
+            });
+
+            // New Buttons to open modal with specific URLs
+            const openPortalButton = document.getElementById('open-portal');
+            const openPaCirebonButton = document.getElementById('open-pa-cirebon');
+
+            openPortalButton.addEventListener('click', () => {
+                openModal('https://portal.pa-cirebon.go.id/');
+            });
+
+            openPaCirebonButton.addEventListener('click', () => {
+                openModal('https://pa-cirebon.go.id/');
+            });
+        });
+    </script>
 @endsection
+
 
 @section('js')
     <!-- Lottie Animation Library -->
@@ -259,6 +405,10 @@
 
         // Unified submission function for voice
         function submitVoice(channelBuffers, sampleRate) {
+
+            agentVideo.pause();
+            agentVideo.currentTime = 0;
+
             console.log('Submitting voice input');
             isSubmitting = true;
             toggleUIState(true);
@@ -346,10 +496,11 @@
         });
 
         // Handle server response for both text and voice
+        // Handle server response for both text and voice
         function handleServerResponse(data) {
             console.log('Server Response:', data);
 
-            // Check for errors
+            // Cek apakah ada error
             if (data.error) {
                 console.error('Server Error:', data.error);
                 updateStatus('error');
@@ -358,32 +509,85 @@
                 return;
             }
 
-            // Extract response text and audio
+            // Ekstrak response_text dan response_audio_base64
             const responseText = data.response_text;
             const responseAudioBase64 = data.response_audio_base64;
+            const questionText = data.question_text;
 
-            // Display the response text in chat history
-            if (responseText) {
-                appendChatMessage('Agent', responseText);
+            // Coba parsing responseText sebagai JSON
+            let jsonResponse = null;
+            try {
+                jsonResponse = JSON.parse(responseText);
+            } catch (e) {
+                // responseText bukan JSON, lanjutkan sebagai teks biasa
+                console.log('Response text bukan JSON.');
             }
 
-            // Play the audio response
-            if (responseAudioBase64) {
-                playAudioResponse(responseAudioBase64);
+            if (jsonResponse && jsonResponse.action === "open_link" && jsonResponse.url) {
+                console.log('Aksi terdeteksi: open_link');
+
+                // Tutup modal jika sudah terbuka
+                closeModal();
+
+                // Buka link dalam modal
+                openModal(jsonResponse.url);
+
+                // Tidak perlu menampilkan pesan teks atau memutar audio
+            } else {
+                // Respons biasa
+                if (questionText) {
+                    document.getElementById('chat-input').value = questionText;
+                }
+
+                // Tampilkan teks respons dalam riwayat chat
+                if (responseText) {
+                    appendChatMessage('Agent', responseText);
+                }
+
+                // Putar audio respons jika ada
+                if (responseAudioBase64) {
+                    playAudioResponse(responseAudioBase64);
+                }
             }
 
+            // Reset status dan UI
             updateStatus('idle');
-            togglePulse(false); // Hide pulse animation
+            togglePulse(false); // Sembunyikan animasi pulse
             toggleUIState(false);
             isSubmitting = false;
 
             console.log('Submission completed, restarting VAD');
 
-            // Restart VAD if it was stopped
+            // Restart VAD jika diperlukan
             if (myvad && !myvad.isRunning) {
                 myvad.start();
                 isRecording = true;
                 console.log('VAD: Restarted recording');
+            }
+        }
+
+        // Fungsi untuk membuka modal dengan URL tertentu
+        function openModal(url) {
+            const modal = document.getElementById('modal');
+            const modalIframe = document.getElementById('modal-iframe');
+
+            // Set URL iframe
+            modalIframe.src = url;
+
+            // Tampilkan modal
+            modal.classList.remove('hidden');
+            console.log('Modal dibuka dengan URL:', url);
+        }
+
+        // Fungsi untuk menutup modal
+        function closeModal() {
+            const modal = document.getElementById('modal');
+            const modalIframe = document.getElementById('modal-iframe');
+
+            if (!modal.classList.contains('hidden')) {
+                modal.classList.add('hidden');
+                modalIframe.src = ''; // Bersihkan src iframe
+                console.log('Modal ditutup.');
             }
         }
 
