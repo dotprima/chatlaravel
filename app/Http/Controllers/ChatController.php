@@ -6,6 +6,7 @@ use GuzzleHttp\Client;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\DB;
+use App\Helpers\TextToSpeechHelper;
 
 class ChatController extends Controller
 {
@@ -45,12 +46,21 @@ class ChatController extends Controller
                 // 1. Process Chat Completion (from text to OpenAI answer)
                 $completionText = $this->chatCompletion($transcript);
 
+                $jsonEncoded = json_encode($completionText);
 
+                // Memeriksa apakah encoding berhasil
+                if ($jsonEncoded === false) {
+                  
+                    // 2. Process Text-to-Speech (from answer to voice buffer)
+                    $voiceBuffer = $this->textToSpeech($completionText);
 
-                // 2. Process Text-to-Speech (from answer to voice buffer)
-                $voiceBuffer = $this->textToSpeech($completionText);
+                    $responseText = $completionText;
+                } else {
 
-                $responseText = $completionText;
+                    $voiceBuffer = 'voice';
+
+                    $responseText = $completionText;
+                }
             } else {
                 // No valid input provided
                 return response()->json(['error' => 'No input provided'], 400);
@@ -62,7 +72,7 @@ class ChatController extends Controller
             }
 
             // Encode the audio buffer to Base64
-            $voiceBase64 = base64_encode($voiceBuffer);
+            $voiceBase64 = $voiceBuffer;
 
             // Return the response text and audio data
             return response()->json([
@@ -83,7 +93,7 @@ class ChatController extends Controller
     private function speechToText($audioBuffer)
     {
         try {
-            $filePath = $audioBuffer->store('public/uploads');
+
             // Maksimum ukuran file yang didukung oleh OpenAI API (25 MB)
             $maxFileSize = 25 * 1024 * 1024; // 25 MB
 
@@ -165,12 +175,7 @@ class ChatController extends Controller
                 \"topics\": [\"topik1\", \"topik2\", \"topikN\"]
             }
             
-            Jika pengguna tidak memberikan perintah untuk membuka link, Anda harus mengembalikan 'null'. 
-            
-            Catatan Penting:
-            - Jangan memberikan informasi yang tidak relevan.
-            - Jangan memberikan informasi tentang nomor telepon atau email, meskipun diminta.
-            - Pastikan respons Anda selalu tepat dan relevan dengan konteks Pengadilan Agama Cirebon dan fitur-fitur yang terkait dengannya.";
+            Jika pengguna tidak memberikan perintah untuk membuka link, Anda harus mengembalikan 'null'.";
 
             // Siapkan pesan untuk API
             $messages = [
@@ -288,26 +293,75 @@ class ChatController extends Controller
 
 
     // Fungsi untuk Text-to-Speech (input teks, output buffer audio)
-    private function textToSpeech($responseText)
+
+    private function textToSpeech($responseText, $voice = 'responsivevoice')
     {
         try {
-            $client = new Client();
+            if ($voice === 'responsivevoice') {
+                // Konfigurasi untuk ResponsiveVoice TTS
+                $apiUrl = 'https://texttospeech.responsivevoice.org/v1/text:synthesize';
+                $apiKey = 'mPtwTKWZ'; // Pastikan untuk menyimpan API key dengan aman
 
-            // Kirim teks ke OpenAI Text-to-Speech API untuk menghasilkan audio
-            $response = $client->post('https://api.openai.com/v1/audio/speech', [
-                'headers' => [
-                    'Authorization' => 'Bearer ' . env('OPENAI_API_KEY'),
-                    'Content-Type'  => 'application/json',
-                ],
-                'json' => [
-                    'model' => 'tts-1', // Gunakan model TTS dari OpenAI
-                    'input' => $responseText,
-                    'voice' => 'alloy', // Suara yang digunakan
-                ]
-            ]);
+                // Parameter yang akan dikirim ke API
+                $params = [
+                    'text' => $responseText,
+                    'lang' => 'id', // Bahasa Indonesia
+                    'engine' => 'g1',
+                    'name' => '', // Anda bisa mengisi jika diperlukan
+                    'pitch' => 0.5,
+                    'rate' => 0.5,
+                    'volume' => 1,
+                    'key' => $apiKey,
+                    'gender' => 'female',
+                ];
 
-            // Kembalikan buffer audio dari respons
-            return $response->getBody()->getContents();
+                // Inisialisasi klien Guzzle
+                $client = new Client();
+
+                // Mengirim permintaan GET ke API dengan parameter query
+                $response = $client->get($apiUrl, [
+                    'query' => $params,
+                    'timeout' => 30, // Timeout dalam detik
+                ]);
+
+                // Memeriksa apakah respons berhasil
+                if ($response->getStatusCode() === 200) {
+                    // Mendapatkan isi respons sebagai string biner (audio)
+                    $audioContent = $response->getBody()->getContents();
+
+                    if (!empty($audioContent)) {
+                        // Encode audio ke base64
+                        return base64_encode($audioContent);
+                    } else {
+                        throw new \Exception('Empty audio content received from ResponsiveVoice API');
+                    }
+                } else {
+                    throw new \Exception('ResponsiveVoice API responded with status code ' . $response->getStatusCode());
+                }
+            } else {
+                // Gunakan OpenAI Text-to-Speech jika voice bukan responsivevoice
+                $client = new Client();
+
+                $response = $client->post('https://api.openai.com/v1/audio/speech', [
+                    'headers' => [
+                        'Authorization' => 'Bearer ' . env('OPENAI_API_KEY'),
+                        'Content-Type'  => 'application/json',
+                    ],
+                    'json' => [
+                        'model' => 'tts-1',
+                        'input' => $responseText,
+                        'voice' => 'alloy',
+                    ]
+                ]);
+
+                // Memeriksa apakah respons berhasil
+                if ($response->getStatusCode() === 200) {
+                    $voiceBuffer = $response->getBody()->getContents();
+                    return base64_encode($voiceBuffer);
+                } else {
+                    throw new \Exception('OpenAI API responded with status code ' . $response->getStatusCode());
+                }
+            }
         } catch (\Exception $e) {
             Log::error('Error in textToSpeech: ' . $e->getMessage());
             throw new \Exception('Failed to generate audio from text');

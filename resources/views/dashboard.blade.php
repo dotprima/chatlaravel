@@ -9,7 +9,6 @@
             left: 0;
             width: 100%;
             height: 100vh;
-            /* Use viewport height */
             overflow: hidden;
             z-index: -1;
         }
@@ -66,10 +65,8 @@
         /* Styling for Lottie */
         #lottie-container {
             width: 150px;
-            /* Adjust size as needed */
             height: 150px;
             margin-bottom: 1rem;
-            /* Space below */
         }
 
         /* Hidden class */
@@ -79,7 +76,6 @@
 
         .mb-4 {
             margin-bottom: 1rem;
-            /* Adjust if needed */
         }
 
         /* Loading Spinner */
@@ -107,8 +103,9 @@
             cursor: not-allowed;
         }
 
-        /* Additional styling for modal buttons */
-        .modal-button {
+        /* Button Styling */
+        .modal-button,
+        .top-buttons button {
             padding: 0.5rem 1rem;
             margin-right: 0.5rem;
             background-color: #3182ce;
@@ -119,65 +116,85 @@
             transition: background-color 0.3s;
         }
 
-        .modal-button:hover {
-            background-color: #2b6cb0;
-        }
-
-        /* Iframe Styling */
-        #modal-iframe {
-            width: 100%;
-            height: 600px;
-            /* Increased from 500px */
-            border: none;
-            margin-top: 1rem;
-        }
-
-        /* Responsive adjustments for iframe */
-        @media (max-width: 768px) {
-            #modal-iframe {
-                height: 300px;
-            }
-        }
-
-        /* Button Styling Above Textfield */
-        .top-buttons {
-            display: flex;
-            gap: 1rem;
-        }
-
-        .top-buttons button {
-            padding: 0.75rem 1.5rem;
-            background-color: #3182ce;
-            color: white;
-            border: none;
-            border-radius: 9999px;
-            cursor: pointer;
-            transition: background-color 0.3s;
-            font-size: 1rem;
-        }
-
+        .modal-button:hover,
         .top-buttons button:hover {
             background-color: #2b6cb0;
         }
 
+        /* Iframe Styling */
+        #split-iframe {
+            width: 100%;
+            height: 100%;
+            border: none;
+        }
+
+        /* Split View Container */
+        .split-view {
+            display: flex;
+            flex-direction: row;
+            width: 100%;
+            height: 100vh;
+        }
+
+        /* Main Content Area */
+        .main-content {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            padding: 2rem;
+            overflow-y: auto;
+            margin-top: 400px;
+        }
+
+        /* Iframe Area */
+        .iframe-container {
+            flex: 1;
+            border-left: 2px solid #ccc;
+            display: none;
+            /* Hidden by default */
+            position: relative;
+        }
+
+        /* Responsive adjustments for split view */
+        @media (max-width: 768px) {
+            .split-view {
+                flex-direction: column;
+            }
+
+            .iframe-container {
+                border-left: none;
+                border-top: 2px solid #ccc;
+                height: 50vh;
+                display: none;
+                /* Hidden by default */
+            }
+        }
+
+        /* Chat Container */
         .chat-container {
             position: fixed;
             bottom: 20px;
             right: 20px;
             z-index: 100;
-            /* Lebih tinggi dari modal */
             width: 100%;
             max-width: 400px;
             padding: 1rem;
         }
 
-        /* Responsif untuk ukuran layar kecil */
+        /* Responsive adjustments for chat container */
         @media (max-width: 768px) {
             .chat-container {
                 right: 10px;
                 left: 10px;
                 max-width: none;
             }
+        }
+
+        /* Show iframe container when active */
+        .iframe-container.active {
+            display: block;
         }
     </style>
 @endsection
@@ -188,131 +205,67 @@
         <video src="{{ asset('assets/agent.mp4') }}" muted autoplay loop></video>
     </div>
 
-
-    <!-- Modal Section -->
-    <div id="modal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center hidden">
-        <div class="bg-white max-w-6xl w-full mx-auto p-6 rounded-lg relative">
-            <!-- Close Button -->
-            <button id="close-modal" class="text-red-600 text-2xl font-bold absolute top-4 right-4">&times;</button>
-
-            <!-- Modal Buttons -->
-            <div class="flex justify-center space-x-4">
-                <button class="modal-button" data-url="https://portal.pa-cirebon.go.id/">Portal</button>
-                <button class="modal-button" data-url="https://pa-cirebon.go.id/">PA Cirebon</button>
+    <!-- Split View Container -->
+    <div class="split-view">
+        <!-- Main Content Area -->
+        <div class="main-content">
+            <!-- Lottie Animation -->
+            <div id="lottie-container" class="hidden mb-4">
+                <!-- Lottie Animation will load here -->
             </div>
 
-            <!-- Iframe to Display Websites -->
-            <iframe id="modal-iframe" src=""></iframe>
-        </div>
-    </div>
+            <!-- Input Chat and Top Buttons -->
+            <div class="top-buttons w-full flex justify-center mb-4" style="display: none">
+                <button type="button" id="open-portal" class="px-4 py-2">
+                    Portal
+                </button>
+                <button type="button" id="open-pa-cirebon" class="px-4 py-2">
+                    PA Cirebon
+                </button>
+            </div>
+            <form id="chat-form"
+                class="mt-8 rounded-full bg-neutral-200/80 dark:bg-neutral-800/80 flex items-center w-full max-w-3xl">
+                <input id="chat-input" type="text" class="bg-transparent focus:outline-none p-4 w-full" required
+                    placeholder="Ask me anything" />
+                <button type="submit" id="submitButton"
+                    class="p-4 bg-gradient-to-r from-blue-500 to-purple-700 rounded-full flex items-center">
+                    Submit
+                    <span id="submit-spinner" class="spinner hidden"></span>
+                </button>
+            </form>
 
+            <!-- Status Indicator -->
+            <div class="text-center mt-3 flex items-center justify-center">
+                <span id="status" class="text-xl font-semibold">Start talking to chat.</span>
+                <span id="text-submit-spinner" class="spinner hidden ml-2"></span>
+            </div>
 
-    <!-- Main Container -->
-    <div class="container mx-auto flex flex-col items-center justify-center min-h-screen p-4">
-        <!-- Lottie Animation -->
-        <div id="lottie-container" class="hidden mb-4">
-            <!-- Lottie Animation will load here -->
-        </div>
+            <!-- Pulse animation for speaking status -->
+            <div id="pulse-container" class="text-center hidden">
+                <div class="pulse"></div>
+            </div>
 
-        <!-- Input Chat and Top Buttons -->
-        <div class="top-buttons w-full flex justify-center">
-            <button type="button" id="open-portal" class="px-4 py-2">
-                Portal
-            </button>
-            <button type="button" id="open-pa-cirebon" class="px-4 py-2">
-                PA Cirebon
-            </button>
-        </div>
-        <form id="chat-form"
-            class="mt-8 rounded-full bg-neutral-200/80 dark:bg-neutral-800/80 flex items-center w-full max-w-3xl">
-            <input id="chat-input" type="text" class="bg-transparent focus:outline-none p-4 w-full" required
-                placeholder="Ask me anything" />
-            <button type="submit" id="submitButton"
-                class="p-4 bg-gradient-to-r from-blue-500 to-purple-700 rounded-full flex items-center">
-                Submit
-                <span id="submit-spinner" class="spinner hidden"></span>
-            </button>
-        </form>
-
-        <!-- Status Indicator -->
-        <div class="text-center mt-3 flex items-center justify-center">
-            <span id="status" class="text-xl font-semibold">Start talking to chat.</span>
-            <span id="text-submit-spinner" class="spinner hidden ml-2"></span>
+            <!-- Chat History -->
+            <div class="text-neutral-400 dark:text-neutral-600 pt-4 text-center max-w-xl min-h-28 space-y-4">
+                <div id="chat-history"></div>
+            </div>
         </div>
 
-        <!-- Pulse animation for speaking status -->
-        <div id="pulse-container" class="text-center hidden">
-            <div class="pulse"></div>
+        <!-- Iframe Area -->
+        <div class="iframe-container" id="iframe-container">
+            <button id="close-iframe" class="modal-button"
+                style="position: absolute; top: 10px; right: 10px; z-index: 10;">Close</button>
+            <iframe id="split-iframe" src=""></iframe>
         </div>
-
-        <!-- Chat History -->
-        <div class="text-neutral-400 dark:text-neutral-600 pt-4 text-center max-w-xl min-h-28 space-y-4">
-            <div id="chat-history"></div>
-        </div>
-
     </div>
 
     <!-- Audio Player for Responses -->
     <audio id="responseAudio"></audio>
-
-
-
-    <!-- Script to handle modal functionality -->
-    <script>
-        document.addEventListener('DOMContentLoaded', () => {
-            const modal = document.getElementById('modal');
-            const closeModalButton = document.getElementById('close-modal');
-            const modalButtons = document.querySelectorAll('.modal-button');
-            const modalIframe = document.getElementById('modal-iframe');
-
-            // Function to open modal with specified URL
-            function openModal(url) {
-                modalIframe.src = url;
-                modal.classList.remove('hidden');
-            }
-
-            // Add event listeners to modal buttons inside the modal
-            modalButtons.forEach(button => {
-                button.addEventListener('click', () => {
-                    const url = button.getAttribute('data-url');
-                    openModal(url);
-                });
-            });
-
-            // Close modal when clicking the close button
-            closeModalButton.addEventListener('click', () => {
-                modal.classList.add('hidden');
-                modalIframe.src = ''; // Clear iframe src when closing
-            });
-
-            // Close modal when clicking outside the modal content
-            window.addEventListener('click', (e) => {
-                if (e.target === modal) {
-                    modal.classList.add('hidden');
-                    modalIframe.src = ''; // Clear iframe src when closing
-                }
-            });
-
-            // New Buttons to open modal with specific URLs
-            const openPortalButton = document.getElementById('open-portal');
-            const openPaCirebonButton = document.getElementById('open-pa-cirebon');
-
-            openPortalButton.addEventListener('click', () => {
-                openModal('https://portal.pa-cirebon.go.id/');
-            });
-
-            openPaCirebonButton.addEventListener('click', () => {
-                openModal('https://pa-cirebon.go.id/');
-            });
-        });
-    </script>
 @endsection
-
 
 @section('js')
     <!-- Lottie Animation Library -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/bodymovin/5.7.13/lottie.min.js"></script>
-
 
     <script>
         let isRecording = false;
@@ -328,6 +281,10 @@
         const submitButton = document.getElementById('submitButton');
         const submitSpinner = document.getElementById('submit-spinner');
         const textSubmitSpinner = document.getElementById('text-submit-spinner');
+
+        // Elements for split view
+        const iframeContainer = document.getElementById('iframe-container');
+        const splitIframe = document.getElementById('split-iframe');
 
         // Load Lottie animation on page load
         window.addEventListener('load', function() {
@@ -358,7 +315,7 @@
                 myvad = await vad.MicVAD.new({
                     positiveSpeechThreshold: 0.9,
                     minSpeechFrames: 4,
-                    redemptionFrames: 5,
+                    redemptionFrames: 30,
                     onSpeechEnd: (audio) => {
                         console.log('VAD Event: Speech ended');
                         if (isSubmitting) {
@@ -369,8 +326,8 @@
                         // Handle when speech ends
                         const sampleRate = 16000; // Fixed sample rate
                         const channelBuffers = [audio]; // Wrap audio as channelBuffers
-                        togglePulse(false); // Show pulse animation
-                        toggleLottie(false); // Show Lottie animation when voice is detected
+                        togglePulse(false); // Hide pulse animation
+                        toggleLottie(false); // Hide Lottie animation when voice is detected
                         // Send audio to server
                         submitVoice(channelBuffers, sampleRate);
                     },
@@ -496,11 +453,10 @@
         });
 
         // Handle server response for both text and voice
-        // Handle server response for both text and voice
         function handleServerResponse(data) {
             console.log('Server Response:', data);
 
-            // Cek apakah ada error
+            // Cek untuk error
             if (data.error) {
                 console.error('Server Error:', data.error);
                 updateStatus('error');
@@ -520,17 +476,24 @@
                 jsonResponse = JSON.parse(responseText);
             } catch (e) {
                 // responseText bukan JSON, lanjutkan sebagai teks biasa
-                console.log('Response text bukan JSON.');
+                console.log('Response text is not JSON.');
             }
 
             if (jsonResponse && jsonResponse.action === "open_link" && jsonResponse.url) {
-                console.log('Aksi terdeteksi: open_link');
+                console.log('Detected action: open_link');
 
-                // Tutup modal jika sudah terbuka
-                closeModal();
+                // Tutup iframe yang ada jika terbuka
+                closeIframe();
 
-                // Buka link dalam modal
-                openModal(jsonResponse.url);
+                openIframe
+
+                // Buka link di iframe
+                openIframe(jsonResponse.url);
+
+                updateStatus('idle');
+                togglePulse(false); // Hide pulse animation
+                toggleUIState(false);
+                isSubmitting = false;
 
                 // Tidak perlu menampilkan pesan teks atau memutar audio
             } else {
@@ -544,57 +507,37 @@
                     appendChatMessage('Agent', responseText);
                 }
 
-                // Putar audio respons jika ada
+                // Putar audio respons jika tersedia
                 if (responseAudioBase64) {
                     playAudioResponse(responseAudioBase64);
                 }
             }
 
-            // Reset status dan UI
-            updateStatus('idle');
-            togglePulse(false); // Sembunyikan animasi pulse
-            toggleUIState(false);
-            isSubmitting = false;
 
-            console.log('Submission completed, restarting VAD');
 
-            // Restart VAD jika diperlukan
-            if (myvad && !myvad.isRunning) {
-                myvad.start();
-                isRecording = true;
-                console.log('VAD: Restarted recording');
-            }
+
+            console.log('Submission completed, waiting for audio to finish');
         }
 
-        // Fungsi untuk membuka modal dengan URL tertentu
-        function openModal(url) {
-            const modal = document.getElementById('modal');
-            const modalIframe = document.getElementById('modal-iframe');
 
-            // Set URL iframe
-            modalIframe.src = url;
-
-            // Tampilkan modal
-            modal.classList.remove('hidden');
-            console.log('Modal dibuka dengan URL:', url);
+        // Function to open iframe with URL
+        function openIframe(url) {
+            splitIframe.src = url;
+            iframeContainer.classList.add('active');
+            console.log('Iframe opened with URL:', url);
         }
 
-        // Fungsi untuk menutup modal
-        function closeModal() {
-            const modal = document.getElementById('modal');
-            const modalIframe = document.getElementById('modal-iframe');
-
-            if (!modal.classList.contains('hidden')) {
-                modal.classList.add('hidden');
-                modalIframe.src = ''; // Bersihkan src iframe
-                console.log('Modal ditutup.');
-            }
+        // Function to close iframe
+        function closeIframe() {
+            splitIframe.src = '';
+            iframeContainer.classList.remove('active');
+            console.log('Iframe closed.');
         }
 
         // Function to play audio response from Base64
         function playAudioResponse(base64Audio) {
             console.log('Playing audio response');
-            // Decode Base64 to binary
+            // Decode Base64 ke binary
             const binaryString = window.atob(base64Audio);
             const len = binaryString.length;
             const bytes = new Uint8Array(len);
@@ -602,16 +545,16 @@
                 bytes[i] = binaryString.charCodeAt(i);
             }
 
-            // Create a Blob from the bytes
+            // Buat Blob dari bytes
             const blob = new Blob([bytes], {
                 type: 'audio/mpeg'
             });
 
-            // Create a URL for the Blob
+            // Buat URL untuk Blob
             const audioUrl = URL.createObjectURL(blob);
             console.log('Audio URL:', audioUrl);
 
-            // Play the audio
+            // Putar audio
             const audioPlayer = document.getElementById('responseAudio');
             audioPlayer.src = audioUrl;
             audioPlayer.play()
@@ -622,15 +565,31 @@
                     console.error('Audio playback failed:', error);
                 });
 
-            // Play video when the audio starts
+            // Putar video saat audio mulai
             agentVideo.play();
             agentVideo.loop = true;
 
-            // When audio ends, reset the video to 0 second and pause it
+            // Ketika audio selesai, reset video dan atur ulang status
             audioPlayer.onended = () => {
                 console.log('Audio playback ended');
                 agentVideo.pause();
-                agentVideo.currentTime = 0; // Reset video to 0 seconds
+                agentVideo.currentTime = 0; // Reset video ke detik 0
+
+                // Setelah audio selesai, atur ulang status
+                updateStatus('idle');
+                togglePulse(false); // Sembunyikan animasi pulse
+                toggleUIState(false);
+                isSubmitting = false;
+
+                console.log('Submission completed, restarting VAD');
+
+                // Restart VAD jika diperlukan
+                if (myvad && !myvad.isRunning) {
+                    myvad.start();
+                    isRecording = true;
+                    agentVideo.loop = false;
+                    console.log('VAD: Restarted recording');
+                }
             };
         }
 
@@ -723,5 +682,19 @@
                 }
             }
         }
+
+        // Event listeners for top buttons to open iframe
+        document.getElementById('open-portal').addEventListener('click', () => {
+            openIframe('https://portal.pa-cirebon.go.id/');
+        });
+
+        document.getElementById('open-pa-cirebon').addEventListener('click', () => {
+            openIframe('https://pa-cirebon.go.id/');
+        });
+
+        // Event listener for close iframe button
+        document.getElementById('close-iframe').addEventListener('click', () => {
+            closeIframe();
+        });
     </script>
 @endsection
