@@ -1,6 +1,9 @@
 @extends('layouts.wrapper')
 
 @section('css')
+    <!-- Select2 CSS -->
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/select2/4.0.13/css/select2.min.css" rel="stylesheet" />
+
     <style>
         /* Ensure the wrapper covers the entire viewport */
         .video-wrapper {
@@ -196,10 +199,51 @@
         .iframe-container.active {
             display: block;
         }
+
+        /* Select2 Container Styling */
+        .select2-container {
+            width: 200px !important;
+        }
+
+        /* Fixed Select Menu Container */
+        .fixed-select-container {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            z-index: 101;
+            /* Above other elements */
+            background: rgba(255, 255, 255, 0.9);
+            padding: 0.5rem 1rem;
+            border-radius: 0.375rem;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+        }
+
+        /* Responsive adjustments for fixed select */
+        @media (max-width: 768px) {
+            .fixed-select-container {
+                top: 10px;
+                right: 10px;
+                width: calc(100% - 20px);
+                box-sizing: border-box;
+            }
+
+            .select2-container {
+                width: 100% !important;
+            }
+        }
     </style>
 @endsection
 
 @section('content')
+    <!-- Fixed Select Menu Container -->
+    <div class="fixed-select-container">
+        <label for="channel-select" class="sr-only">Select Channel</label>
+        <select id="channel-select" name="channel" class="w-full" required>
+            <option value="google_tts">Google TTS</option>
+            <option value="chatgpt">ChatGPT</option>
+        </select>
+    </div>
+
     <!-- Video Background -->
     <div class="video-wrapper">
         <video src="{{ asset('assets/agent.mp4') }}" muted autoplay loop></video>
@@ -223,6 +267,7 @@
                     PA Cirebon
                 </button>
             </div>
+
             <form id="chat-form"
                 class="mt-8 rounded-full bg-neutral-200/80 dark:bg-neutral-800/80 flex items-center w-full max-w-3xl">
                 <input id="chat-input" type="text" class="bg-transparent focus:outline-none p-4 w-full" required
@@ -264,10 +309,27 @@
 @endsection
 
 @section('js')
+    <!-- Select2 JS -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/select2/4.0.13/js/select2.min.js"></script>
+
     <!-- Lottie Animation Library -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/bodymovin/5.7.13/lottie.min.js"></script>
 
+    <!-- VAD Library (Assuming you have a VAD library, otherwise include it accordingly) -->
+    <script src="https://cdn.jsdelivr.net/npm/vad.js"></script> <!-- Replace with actual VAD library source -->
+
     <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            // Initialize Select2
+            $('#channel-select').select2({
+                placeholder: "Select a channel",
+                minimumResultsForSearch: Infinity // Hide the search box
+            }).on('change', function() {
+                // Optional: Handle channel change if needed
+                console.log('Selected channel:', $(this).val());
+            });
+        });
+
         let isRecording = false;
         let isSubmitting = false; // Flag to prevent double submissions
         let myvad;
@@ -382,6 +444,11 @@
             const formData = new FormData();
             formData.append('audio', blob, 'audio.wav');
 
+            // Get the selected channel value
+            const channelSelect = document.getElementById('channel-select');
+            const selectedChannel = channelSelect.value || 'chatgpt'; // Default to 'chatgpt' if not selected
+            formData.append('channel', selectedChannel);
+
             // Get CSRF token
             const csrfToken = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
 
@@ -424,6 +491,11 @@
             const formData = new FormData();
             formData.append('message', text);
 
+            // Get the selected channel value
+            const channelSelect = document.getElementById('channel-select');
+            const selectedChannel = channelSelect.value || 'chatgpt'; // Default to 'chatgpt' if not selected
+            formData.append('channel', selectedChannel);
+
             // Get CSRF token
             const csrfToken = document.querySelector('meta[name="csrf-token"]').getAttribute('content');
 
@@ -456,7 +528,7 @@
         function handleServerResponse(data) {
             console.log('Server Response:', data);
 
-            // Cek untuk error
+            // Check for error
             if (data.error) {
                 console.error('Server Error:', data.error);
                 updateStatus('error');
@@ -465,29 +537,27 @@
                 return;
             }
 
-            // Ekstrak response_text dan response_audio_base64
+            // Extract response_text and response_audio_base64
             const responseText = data.response_text;
             const responseAudioBase64 = data.response_audio_base64;
             const questionText = data.question_text;
 
-            // Coba parsing responseText sebagai JSON
+            // Try parsing responseText as JSON
             let jsonResponse = null;
             try {
                 jsonResponse = JSON.parse(responseText);
             } catch (e) {
-                // responseText bukan JSON, lanjutkan sebagai teks biasa
+                // responseText is not JSON, proceed as plain text
                 console.log('Response text is not JSON.');
             }
 
             if (jsonResponse && jsonResponse.action === "open_link" && jsonResponse.url) {
                 console.log('Detected action: open_link');
 
-                // Tutup iframe yang ada jika terbuka
+                // Close existing iframe if open
                 closeIframe();
 
-                openIframe
-
-                // Buka link di iframe
+                // Open the new iframe
                 openIframe(jsonResponse.url);
 
                 updateStatus('idle');
@@ -495,30 +565,26 @@
                 toggleUIState(false);
                 isSubmitting = false;
 
-                // Tidak perlu menampilkan pesan teks atau memutar audio
+                // No need to display text message or play audio
             } else {
-                // Respons biasa
+                // Regular response
                 if (questionText) {
                     document.getElementById('chat-input').value = questionText;
                 }
 
-                // Tampilkan teks respons dalam riwayat chat
+                // Display response text in chat history
                 if (responseText) {
                     appendChatMessage('Agent', responseText);
                 }
 
-                // Putar audio respons jika tersedia
+                // Play response audio if available
                 if (responseAudioBase64) {
                     playAudioResponse(responseAudioBase64);
                 }
             }
 
-
-
-
             console.log('Submission completed, waiting for audio to finish');
         }
-
 
         // Function to open iframe with URL
         function openIframe(url) {
@@ -537,7 +603,7 @@
         // Function to play audio response from Base64
         function playAudioResponse(base64Audio) {
             console.log('Playing audio response');
-            // Decode Base64 ke binary
+            // Decode Base64 to binary
             const binaryString = window.atob(base64Audio);
             const len = binaryString.length;
             const bytes = new Uint8Array(len);
@@ -545,16 +611,16 @@
                 bytes[i] = binaryString.charCodeAt(i);
             }
 
-            // Buat Blob dari bytes
+            // Create Blob from bytes
             const blob = new Blob([bytes], {
                 type: 'audio/mpeg'
             });
 
-            // Buat URL untuk Blob
+            // Create URL for Blob
             const audioUrl = URL.createObjectURL(blob);
             console.log('Audio URL:', audioUrl);
 
-            // Putar audio
+            // Play audio
             const audioPlayer = document.getElementById('responseAudio');
             audioPlayer.src = audioUrl;
             audioPlayer.play()
@@ -565,25 +631,25 @@
                     console.error('Audio playback failed:', error);
                 });
 
-            // Putar video saat audio mulai
+            // Play video when audio starts
             agentVideo.play();
             agentVideo.loop = true;
 
-            // Ketika audio selesai, reset video dan atur ulang status
+            // When audio ends, reset video and status
             audioPlayer.onended = () => {
                 console.log('Audio playback ended');
                 agentVideo.pause();
-                agentVideo.currentTime = 0; // Reset video ke detik 0
+                agentVideo.currentTime = 0; // Reset video to second 0
 
-                // Setelah audio selesai, atur ulang status
+                // After audio ends, reset status
                 updateStatus('idle');
-                togglePulse(false); // Sembunyikan animasi pulse
+                togglePulse(false); // Hide pulse animation
                 toggleUIState(false);
                 isSubmitting = false;
 
                 console.log('Submission completed, restarting VAD');
 
-                // Restart VAD jika diperlukan
+                // Restart VAD if necessary
                 if (myvad && !myvad.isRunning) {
                     myvad.start();
                     isRecording = true;
