@@ -6,13 +6,14 @@ use GuzzleHttp\Client;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\DB;
-use App\Helpers\TextToSpeechHelper;
 
 class ChatController extends Controller
 {
 
     public function processVoiceToResponse(Request $request)
     {
+        $voice = $request->channel;
+
         try {
             // Initialize variables
             $voiceBuffer = null;
@@ -31,10 +32,20 @@ class ChatController extends Controller
                 // 2. Process Chat Completion (from text to OpenAI answer)
                 $completionText = $this->chatCompletion($transcript);
 
-                // 3. Process Text-to-Speech (from answer to voice buffer)
-                $voiceBuffer = $this->textToSpeech($completionText);
+                // Decode the JSON result into an array
+                $completionArray = json_decode($completionText, true);
 
-                $responseText = $completionText;
+                // Check if 'action' and 'url' exist and are not null
+                if (isset($completionArray['action']) && isset($completionArray['url'])) {
+                    $voiceBuffer = 'voice';
+
+                    $responseText = $completionText;
+                } else {
+                    // 2. Process Text-to-Speech (from answer to voice buffer)
+                    $voiceBuffer = $this->textToSpeech($completionText, $voice);
+
+                    $responseText = $completionText;
+                }
             }
             // Check if the request contains a text message
             elseif ($request->has('message')) {
@@ -46,18 +57,17 @@ class ChatController extends Controller
                 // 1. Process Chat Completion (from text to OpenAI answer)
                 $completionText = $this->chatCompletion($transcript);
 
-                $jsonEncoded = json_encode($completionText);
+                // Decode the JSON result into an array
+                $completionArray = json_decode($completionText, true);
 
-                // Memeriksa apakah encoding berhasil
-                if ($jsonEncoded === false) {
-                  
-                    // 2. Process Text-to-Speech (from answer to voice buffer)
-                    $voiceBuffer = $this->textToSpeech($completionText);
+                // Check if 'action' and 'url' exist and are not null
+                if (isset($completionArray['action']) && isset($completionArray['url'])) {
+                    $voiceBuffer = 'voice';
 
                     $responseText = $completionText;
                 } else {
-
-                    $voiceBuffer = 'voice';
+                    // 2. Process Text-to-Speech (from answer to voice buffer)
+                    $voiceBuffer = $this->textToSpeech($completionText, $voice);
 
                     $responseText = $completionText;
                 }
@@ -144,9 +154,10 @@ class ChatController extends Controller
     }
 
 
-    private function chat($transcript)
+    private function chat($transcript, $max_tokens = 500, $temperature = 0.7)
     {
         $client = new Client();
+        $model = env('OPENAI_CHAT_MODEL');
         // Kirim teks ke OpenAI Chat API untuk mendeteksi apakah ada perintah membuka link
         return $client->post('https://api.openai.com/v1/chat/completions', [
             'headers' => [
@@ -154,8 +165,10 @@ class ChatController extends Controller
                 'Content-Type' => 'application/json',
             ],
             'json' => [
-                'model' => 'gpt-4',
+                'model' => $model,
                 'messages' => $transcript,
+                'max_tokens' => $max_tokens, 
+                'temperature' => $temperature, 
             ]
         ]);
     }
@@ -167,15 +180,16 @@ class ChatController extends Controller
             // Siapkan prompt untuk mendeteksi apakah perintah pengguna adalah untuk membuka link
             $systemPrompt = "Anda adalah Riska Assistant, sebuah asisten virtual yang dibuat oleh Rizqi Abdul Karim, seorang insinyur perangkat lunak. Fokus utama Anda adalah memberikan informasi dan bantuan terkait Pengadilan Agama Cirebon, termasuk layanan yang tersedia di dalamnya.
     
-            Tugas Anda adalah mendeteksi apakah pengguna memberikan perintah untuk membuka sebuah fitur atau halaman web. Jika iya, Anda perlu mengekstrak topik-topik yang relevan dari perintah tersebut dan mengembalikan hasilnya dalam format JSON.
+            Tugas Anda adalah mendeteksi apakah pengguna memberikan perintah untuk membuka sebuah fitur atau halaman web. Jika iya, Anda perlu mengekstrak topik-topik yang relevan dari perintah tersebut dan mengembalikan hasilnya dalam format JSON per kata.
             
-            Berikut adalah format JSON yang harus dikembalikan jika pengguna meminta untuk membuka link:
+            Berikut adalah format JSON per kata yang harus dikembalikan jika pengguna meminta untuk membuka link:
             
             {
                 \"topics\": [\"topik1\", \"topik2\", \"topikN\"]
             }
             
             Jika pengguna tidak memberikan perintah untuk membuka link, Anda harus mengembalikan 'null'.";
+
 
             // Siapkan pesan untuk API
             $messages = [
@@ -190,7 +204,7 @@ class ChatController extends Controller
             ];
 
             // Memanggil fungsi chat untuk mendapatkan hasil dari OpenAI
-            $response = $this->chat($messages);
+            $response = $this->chat($messages, 1000, 0.7);
 
             // Pastikan respons dari API tidak kosong
             if (!$response || !$response->getBody()) {
@@ -204,7 +218,7 @@ class ChatController extends Controller
             $topicsResponse = $result['choices'][0]['message']['content'] ?? null;
 
             $featuresList = "";
-
+            $search = "";
             if (trim($topicsResponse) != 'null') {
                 // Jika respons adalah JSON, lanjutkan memproses topik
                 $decodedTopics = json_decode($topicsResponse, true);
@@ -226,36 +240,40 @@ class ChatController extends Controller
                         foreach ($featuresFromDB as $feature) {
                             $featuresList .= ucfirst($feature->name) . ": " . $feature->link . "\n";
                         }
+
+                        $search = "" . $featuresList . "
+                        Jika pengguna meminta untuk membuka sebuah fitur, pastikan Anda hanya memberikan link yang sesuai dengan fitur yang ada. Format yang harus dikembalikan adalah:
+                        {
+                            \"action\": \"open_link\",
+                            \"url\": \"[URL yang sesuai]\"
+                        }
+                        Pastikan untuk mengembalikan format JSON tanpa penjelasan tambahan. Jika tidak ada fitur yang sesuai, nyatakan bahwa fitur tidak ditemukan.";
                     } else {
-                        $featuresList = "Fitur tidak ditemukan.";
+                        $featuresList = "";
                     }
                 } else {
                     Log::info('No topics found in response');
-                    $featuresList = "Fitur tidak ditemukan.";
+                    $featuresList = "";
                 }
             } else {
                 Log::info('User did not request to open a link');
-                $featuresList = "Fitur tidak ditemukan.";
+                $featuresList = "";
             }
 
-            // Inisialisasi prompt sistem dengan daftar fitur
-            $finalPrompt = "Anda adalah Riska Assistant, sebuah asisten virtual yang diciptakan oleh Rizqi Abdul Karim, seorang insinyur perangkat lunak. Anda bertugas memberikan informasi yang akurat dan berguna terkait Pengadilan Agama Cirebon. Berikut adalah daftar fitur dan layanan yang tersedia:
-    
-            " . $featuresList . "
-    
-             Jika pengguna meminta untuk membuka sebuah fitur, pastikan Anda hanya memberikan link yang sesuai dengan fitur yang ada. Format yang harus dikembalikan adalah:
-    
-             {
-                 \"action\": \"open_link\",
-                 \"url\": \"[URL yang sesuai]\"
-             }
-    
-             Pastikan untuk mengembalikan format JSON tanpa penjelasan tambahan. Jika tidak ada fitur yang sesuai, nyatakan bahwa fitur tidak ditemukan.
-             Catatan Penting:
-                - Jangan memberikan informasi yang tidak relevan.
-                - Jangan memberikan informasi tentang nomor telepon atau email, meskipun diminta.
-                - Pastikan respons Anda selalu tepat dan relevan dengan konteks Pengadilan Agama Cirebon dan fitur-fitur yang terkait dengannya
-             ";
+            $finalPrompt = "Anda adalah Riska Assistant, sebuah asisten virtual yang diciptakan oleh Rizqi Abdul Karim, seorang insinyur perangkat lunak yang berfokus pada pengembangan sistem untuk pelayanan Pengadilan Agama Cirebon. Selain memberikan informasi tentang Pengadilan Agama Cirebon, Anda juga dapat memberikan informasi umum yang relevan sesuai permintaan, selama tetap mematuhi batasan yang ada.";
+
+            // Jika $search kosong, tambahkan instruksi khusus untuk text-to-speech
+            if ($search === "") {
+                $finalPrompt .= "\n\nTanggapi dengan cara yang mudah diucapkan oleh perangkat text-to-speech.";
+            } else {
+                $finalPrompt .= $search;
+            }
+
+            $finalPrompt .= "\n\nCatatan Penting:\n- Jangan memberikan informasi tentang nomor telepon atau email, meskipun diminta.";
+
+            Log::info('topicsResponse: ' . $topicsResponse);
+            Log::info('Search: ' . $search);
+            Log::info('Final prompt: ' . $finalPrompt);
 
             // Siapkan pesan untuk API dengan prompt final
             $messages = [
@@ -294,10 +312,10 @@ class ChatController extends Controller
 
     // Fungsi untuk Text-to-Speech (input teks, output buffer audio)
 
-    private function textToSpeech($responseText, $voice = 'responsivevoice')
+    private function textToSpeech($responseText, $voice = 'google_tts')
     {
         try {
-            if ($voice === 'responsivevoice') {
+            if ($voice === 'google_tts') {
                 // Konfigurasi untuk ResponsiveVoice TTS
                 $apiUrl = 'https://texttospeech.responsivevoice.org/v1/text:synthesize';
                 $apiKey = 'mPtwTKWZ'; // Pastikan untuk menyimpan API key dengan aman

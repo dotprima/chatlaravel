@@ -205,13 +205,12 @@
             width: 200px !important;
         }
 
-        /* Fixed Select Menu Container */
         .fixed-select-container {
             position: fixed;
             top: 20px;
-            right: 20px;
+            left: 20px;
+            /* Ganti dari right ke left */
             z-index: 101;
-            /* Above other elements */
             background: rgba(255, 255, 255, 0.9);
             padding: 0.5rem 1rem;
             border-radius: 0.375rem;
@@ -222,7 +221,8 @@
         @media (max-width: 768px) {
             .fixed-select-container {
                 top: 10px;
-                right: 10px;
+                left: 10px;
+                /* Ganti dari right ke left */
                 width: calc(100% - 20px);
                 box-sizing: border-box;
             }
@@ -235,6 +235,7 @@
 @endsection
 
 @section('content')
+   
     <!-- Fixed Select Menu Container -->
     <div class="fixed-select-container">
         <label for="channel-select" class="sr-only">Select Channel</label>
@@ -242,7 +243,14 @@
             <option value="google_tts">Google TTS</option>
             <option value="chatgpt">ChatGPT</option>
         </select>
+
+        <!-- Logout Form -->
+        <form method="POST" action="{{ route('logout') }}">
+            @csrf
+            <button type="submit" class="mt-2 modal-button">Logout</button>
+        </form>
     </div>
+
 
     <!-- Video Background -->
     <div class="video-wrapper">
@@ -309,14 +317,15 @@
 @endsection
 
 @section('js')
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jquery/3.7.1/jquery.min.js"
+        integrity="sha512-v2CJ7UaYy4JwqLDIrZUI/4hqeoQieOmAZNXBeQyjo21dadnwR+8ZaIJVT8EE2iyI61OV8e6M8PP2/4hpQINQ/g=="
+        crossorigin="anonymous" referrerpolicy="no-referrer"></script>
     <!-- Select2 JS -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/select2/4.0.13/js/select2.min.js"></script>
 
     <!-- Lottie Animation Library -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/bodymovin/5.7.13/lottie.min.js"></script>
 
-    <!-- VAD Library (Assuming you have a VAD library, otherwise include it accordingly) -->
-    <script src="https://cdn.jsdelivr.net/npm/vad.js"></script> <!-- Replace with actual VAD library source -->
 
     <script>
         document.addEventListener('DOMContentLoaded', function() {
