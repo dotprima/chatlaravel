@@ -279,7 +279,7 @@
             <form id="chat-form"
                 class="mt-8 rounded-full bg-neutral-200/80 dark:bg-neutral-800/80 flex items-center w-full max-w-3xl">
                 <input id="chat-input" type="text" class="bg-transparent focus:outline-none p-4 w-full" required
-                    placeholder="Ask me anything" />
+                    placeholder="Tolong bukan Halaman Portal" />
                 <button type="submit" id="submitButton"
                     class="p-4 bg-gradient-to-r from-blue-500 to-purple-700 rounded-full flex items-center">
                     Submit

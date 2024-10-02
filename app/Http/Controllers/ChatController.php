@@ -6,6 +6,7 @@ use GuzzleHttp\Client;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Log;
 use Illuminate\Support\Facades\DB;
+use App\Helpers\TextToSpeechHelper;
 
 class ChatController extends Controller
 {
@@ -167,8 +168,8 @@ class ChatController extends Controller
             'json' => [
                 'model' => $model,
                 'messages' => $transcript,
-                'max_tokens' => $max_tokens, 
-                'temperature' => $temperature, 
+                'max_tokens' => $max_tokens,
+                'temperature' => $temperature,
             ]
         ]);
     }
@@ -204,7 +205,7 @@ class ChatController extends Controller
             ];
 
             // Memanggil fungsi chat untuk mendapatkan hasil dari OpenAI
-            $response = $this->chat($messages, 1000, 0.7);
+            $response = $this->chat($messages, 2000, 0.1);
 
             // Pastikan respons dari API tidak kosong
             if (!$response || !$response->getBody()) {
@@ -312,52 +313,36 @@ class ChatController extends Controller
 
     // Fungsi untuk Text-to-Speech (input teks, output buffer audio)
 
-    private function textToSpeech($responseText, $voice = 'google_tts')
+
+    /**
+     * Converts text to speech using either Google TTS or OpenAI TTS.
+     *
+     * @param string $responseText The text to be converted to audio.
+     * @param string $voice The voice service to use ('google_tts' or other for OpenAI).
+     * @return string The base64-encoded audio.
+     * @throws \Exception If audio generation fails.
+     */
+
+    private function textToSpeech(string $responseText, string $voice = 'google_tts'): string
     {
         try {
             if ($voice === 'google_tts') {
-                // Konfigurasi untuk ResponsiveVoice TTS
-                $apiUrl = 'https://texttospeech.responsivevoice.org/v1/text:synthesize';
-                $apiKey = 'mPtwTKWZ'; // Pastikan untuk menyimpan API key dengan aman
-
-                // Parameter yang akan dikirim ke API
-                $params = [
-                    'text' => $responseText,
+                $ttsHelper  = new TextToSpeechHelper();
+                // Menggunakan helper TextToSpeechHelper untuk membuat TTS dan menggabungkan audio
+                $combinedBase64 = $ttsHelper->getCombinedAudioBase64($responseText, [
                     'lang' => 'id', // Bahasa Indonesia
-                    'engine' => 'g1',
-                    'name' => '', // Anda bisa mengisi jika diperlukan
-                    'pitch' => 0.5,
-                    'rate' => 0.5,
-                    'volume' => 1,
-                    'key' => $apiKey,
-                    'gender' => 'female',
-                ];
-
-                // Inisialisasi klien Guzzle
-                $client = new Client();
-
-                // Mengirim permintaan GET ke API dengan parameter query
-                $response = $client->get($apiUrl, [
-                    'query' => $params,
-                    'timeout' => 30, // Timeout dalam detik
+                    'slow' => false,
+                    'host' => 'https://translate.google.com',
                 ]);
 
-                // Memeriksa apakah respons berhasil
-                if ($response->getStatusCode() === 200) {
-                    // Mendapatkan isi respons sebagai string biner (audio)
-                    $audioContent = $response->getBody()->getContents();
 
-                    if (!empty($audioContent)) {
-                        // Encode audio ke base64
-                        return base64_encode($audioContent);
-                    } else {
-                        throw new \Exception('Empty audio content received from ResponsiveVoice API');
-                    }
+                if (!empty($combinedBase64)) {
+                    return $combinedBase64;
                 } else {
-                    throw new \Exception('ResponsiveVoice API responded with status code ' . $response->getStatusCode());
+                    throw new \Exception('Empty audio content received from Google TTS');
                 }
             } else {
-                // Gunakan OpenAI Text-to-Speech jika voice bukan responsivevoice
+                // Gunakan OpenAI Text-to-Speech jika voice bukan google_tts
                 $client = new Client();
 
                 $response = $client->post('https://api.openai.com/v1/audio/speech', [
@@ -369,7 +354,8 @@ class ChatController extends Controller
                         'model' => 'tts-1',
                         'input' => $responseText,
                         'voice' => 'alloy',
-                    ]
+                    ],
+                    'timeout' => 10, // Timeout dalam detik
                 ]);
 
                 // Memeriksa apakah respons berhasil

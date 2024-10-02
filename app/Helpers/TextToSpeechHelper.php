@@ -2,172 +2,323 @@
 
 namespace App\Helpers;
 
-use GuzzleHttp\Client;
-use GuzzleHttp\Exception\GuzzleException;
-use Exception;
+use Illuminate\Support\Facades\Log;
 
 class TextToSpeechHelper
 {
+
+
     /**
-     * Validate input types.
+     * Asserts that the input types are valid.
      *
-     * @param string $text
-     * @param string $lang
-     * @param bool $slow
-     * @param string $host
-     * @throws Exception
+     * @param string $text The text to be checked.
+     * @param string $lang The language to be checked.
+     * @param bool $slow The slow flag to be checked.
+     * @param string $host The host to be checked.
+     * @throws \InvalidArgumentException If any of the input types are empty strings.
+     * @return void
      */
-    private static function assertInputTypes(string $text, string $lang, bool $slow, string $host): void
+    private function assertInputTypes(string $text, string $lang, bool $slow, string $host): void
     {
-        if (empty($text)) {
-            throw new Exception('Text cannot be empty.');
+        if ($text === '') {
+            throw new \InvalidArgumentException('text should be a non-empty string');
         }
 
-        if (empty($lang)) {
-            throw new Exception('Language code cannot be empty.');
+        if ($lang === '') {
+            throw new \InvalidArgumentException('lang should be a non-empty string');
         }
 
-        if (filter_var($host, FILTER_VALIDATE_URL) === false) {
-            throw new Exception('Invalid host URL.');
+        if ($host === '') {
+            throw new \InvalidArgumentException('host should be a non-empty string');
         }
     }
 
     /**
-     * Split the text into manageable chunks based on sentence boundaries.
+     * Determines if a character at the specified position is a space or punctuation.
      *
-     * @param string $text
-     * @return array
+     * @param string $s The input string.
+     * @param int $i The index of the character to check.
+     * @param string $splitPunct The punctuation to check for.
+     * @return bool
      */
-    private static function splitLongText(string $text): array
+    private function isSpaceOrPunct(string $s, int $i, string $splitPunct): bool
     {
-        // Split text into sentences using regex
-        // This regex splits on ., !, ?, followed by a space or end of string
-        $sentences = preg_split('/(?<=[.?!])\s+/', $text, -1, PREG_SPLIT_NO_EMPTY);
+        // Mendapatkan karakter pada indeks ke-$i
+        $char = mb_substr($s, $i, 1);
 
-        // Further split sentences that are still too long
-        $maxLength = 200;
-        $chunks = [];
+        // Daftar karakter spasi yang diinginkan
+        $spaceChars = [" ", "\t", "\n", "\r", "\0", "\x0B", "\xFEFF", "\xA0"];
 
-        foreach ($sentences as $sentence) {
-            if (strlen($sentence) <= $maxLength) {
-                $chunks[] = $sentence;
-            } else {
-                // Split long sentences into smaller chunks
-                $parts = str_split($sentence, $maxLength);
-                foreach ($parts as $part) {
-                    $chunks[] = $part;
-                }
+        // Daftar tanda baca dasar
+        $defaultPunctuations = '!"#$%&\'()*+,-./:;<=>?@[\\]^_`{|}~';
+
+        // Gabungkan tanda baca dasar dengan tambahan dari $splitPunct
+        $allPunctuations = str_split($defaultPunctuations . $splitPunct);
+
+        // Memeriksa apakah karakter adalah spasi atau tanda baca
+        return in_array($char, $spaceChars) || in_array($char, $allPunctuations);
+    }
+
+
+
+    /**
+     * Finds the last index of a space or punctuation character in a string within a given range.
+     *
+     * @param string $s The input string.
+     * @param int $left The left boundary of the range (inclusive).
+     * @param int $right The right boundary of the range (inclusive).
+     * @param string $splitPunct The punctuation to check for.
+     * @return int The index of the last space or punctuation character within the range, or -1 if none found.
+     */
+    private function lastIndexOfSpaceOrPunct(string $s, int $left, int $right, string $splitPunct): int
+    {
+        for ($i = $right; $i >= $left; $i--) {
+            if ($this->isSpaceOrPunct($s, $i, $splitPunct)) {
+                return $i;
             }
         }
-
-        return $chunks;
+        return -1;
     }
 
     /**
-     * Get Google TTS audio as a base64-encoded string.
+     * Splits a long text into an array of short texts.
      *
-     * @param string $text Length should be less than 200 characters
-     * @param array $options
-     * @return string Base64-encoded audio
-     * @throws Exception
+     * @param string $text The text to be split.
+     * @param array $options An optional array of options. Default is an empty array.
+     *   - maxLength (int): The maximum length of each short text. Default is 200.
+     *   - splitPunct (string): The punctuation to split the text by. Default is an empty string.
+     * @return array An array of short texts.
+     * @throws \RuntimeException If the word is too long to split into a short text.
      */
-    public static function getAudioBase64(string $text, array $options = []): string
+    private function splitLongText(string $text, array $options = []): array
     {
-        $lang = $options['lang'] ?? 'en';
-        $slow = $options['slow'] ?? false;
-        $host = $options['host'] ?? 'https://translate.google.com';
-        $timeout = $options['timeout'] ?? 10; // Timeout in seconds
+        $maxLength = $options['maxLength'] ?? 200;
+        $splitPunct = $options['splitPunct'] ?? '';
 
-        self::assertInputTypes($text, $lang, $slow, $host);
+        $result = [];
+        $start = 0;
 
-        if (strlen($text) > 200) {
-            throw new Exception('Text length should be less than 200 characters.');
-        }
-
-        $client = new Client();
-
-        try {
-            $response = $client->post($host . '/_/TranslateWebserverUi/data/batchexecute', [
-                'timeout' => $timeout,
-                'form_params' => [
-                    'f.req' => json_encode([
-                        [['jQ1olc', json_encode([$text, $lang, $slow, null]), null, 'generic']]
-                    ])
-                ]
-            ]);
-        } catch (GuzzleException $e) {
-            throw new Exception('HTTP request failed: ' . $e->getMessage());
-        }
-
-        $body = (string) $response->getBody();
-
-        // Remove the leading characters that are not part of the JSON
-        $jsonStart = strpos($body, '[');
-        if ($jsonStart === false) {
-            throw new Exception('Invalid response format.');
-        }
-
-        $jsonString = substr($body, $jsonStart);
-
-        // Decode the JSON response
-        $decoded = json_decode($jsonString, true);
-
-        if (json_last_error() !== JSON_ERROR_NONE) {
-            throw new Exception('JSON decode error: ' . json_last_error_msg());
-        }
-
-        // Navigate through the decoded array to extract the base64 audio
-        try {
-            // The exact path may vary; adjust based on actual response structure
-            $result = $decoded[0][2][0][0][1];
-            if (empty($result)) {
-                throw new Exception('Empty audio result.');
+        while (true) {
+            if (mb_strlen($text) - $start <= $maxLength) {
+                $result[] = mb_substr($text, $start);
+                break;
             }
-        } catch (\Exception $e) {
-            throw new Exception('Failed to parse audio from response.');
+
+            $end = $start + $maxLength - 1;
+
+            if (
+                $this->isSpaceOrPunct($text, $end, $splitPunct) ||
+                $this->isSpaceOrPunct($text, $end + 1, $splitPunct)
+            ) {
+                $result[] = mb_substr($text, $start, $end - $start + 1);
+                $start = $end + 1;
+                continue;
+            }
+
+            $end = $this->lastIndexOfSpaceOrPunct($text, $start, $end, $splitPunct);
+            if ($end === -1) {
+                throw new \RuntimeException(
+                    'The word is too long to split into a short text:' .
+                        "\n" . mb_substr($text, $start, $maxLength) . " ..." .
+                        "\n\nTry the option \"splitPunct\" to split the text by punctuation."
+                );
+            }
+
+            $result[] = mb_substr($text, $start, $end - $start + 1);
+            $start = $end + 1;
         }
 
         return $result;
     }
 
     /**
-     * Split the long text into multiple short texts and generate audio base64 list.
+     * Retrieves the base64-encoded audio for the given text.
      *
-     * @param string $text
-     * @param array $options
-     * @return array List of short texts and their corresponding base64-encoded audio
-     * @throws Exception
+     * @param string $text The text to be converted to audio.
+     * @param array $options An optional array of options. Default is an empty array.
+     *   - lang (string): The language of the text. Default is 'en'.
+     *   - slow (bool): Whether to slow down the speech. Default is false.
+     *   - host (string): The host URL for the translation service. Default is 'https://translate.google.com'.
+     *   - timeout (int): The timeout in milliseconds for the request. Default is 10000.
+     * @throws \InvalidArgumentException If the timeout is not a positive number.
+     * @throws \RangeException If the text length is greater than 200 characters.
+     * @throws \RuntimeException If the request fails, the language might not exist, or the response structure is unexpected.
+     * @return string The base64-encoded audio.
      */
-    public static function getAllAudioBase64(string $text, array $options = []): array
+    public function getAudioBase64(string $text, array $options = []): string
     {
         $lang = $options['lang'] ?? 'en';
         $slow = $options['slow'] ?? false;
         $host = $options['host'] ?? 'https://translate.google.com';
-        $timeout = $options['timeout'] ?? 10; // Timeout in seconds
+        $timeout = $options['timeout'] ?? 10000;
 
-        self::assertInputTypes($text, $lang, $slow, $host);
+        $this->assertInputTypes($text, $lang, $slow, $host);
 
-        // Split the text into manageable chunks
-        $shortTextList = self::splitLongText($text);
-        $base64List = [];
+        if (!is_int($timeout) || $timeout <= 0) {
+            throw new \InvalidArgumentException('timeout should be a positive number');
+        }
 
+        if (strlen($text) > 200) {
+            throw new \RangeException(
+                'text length (' . strlen($text) . ') should be less than 200 characters. Try "getAllAudioBase64" for long text.'
+            );
+        }
+
+        $data = 'f.req=' . urlencode(json_encode([
+            [
+                ['jQ1olc', json_encode([$text, $lang, $slow ? true : null, 'null']), null, 'generic']
+            ]
+        ]));
+
+        $options = [
+            'http' => [
+                'header'  => "Content-type: application/x-www-form-urlencoded\r\n",
+                'method'  => 'POST',
+                'content' => $data,
+                'timeout' => $timeout / 1000, // convert to seconds
+            ],
+        ];
+
+        $context  = stream_context_create($options);
+        $result = file_get_contents($host . '/_/TranslateWebserverUi/data/batchexecute', false, $context);
+
+        if ($result === FALSE) {
+            throw new \RuntimeException('Request failed');
+        }
+
+        $evalStr = substr($result, 5);
+        $parsedRes = json_decode($evalStr, true);
+
+        if (!isset($parsedRes[0][2])) {
+            throw new \RuntimeException('parse response failed: unexpected structure');
+        }
+
+        $result = $parsedRes[0][2];
+
+        if (!$result) {
+            throw new \RuntimeException('lang "' . $lang . '" might not exist');
+        }
+
+        $result = json_decode($result, true);
+
+        if (!isset($result[0])) {
+            throw new \RuntimeException('parse response failed: unexpected structure');
+        }
+
+        return $result[0];
+    }
+
+    /**
+     * Retrieves the base64-encoded audio for all short texts generated from the given text.
+     *
+     * @param string $text The text to be converted to audio.
+     * @param array $options An optional array of options. Default is an empty array.
+     *   - lang (string): The language of the text. Default is 'en'.
+     *   - slow (bool): Whether to slow down the speech. Default is false.
+     *   - host (string): The host URL for the translation service. Default is 'https://translate.google.com'.
+     *   - splitPunct (string): The punctuation to split the text by. Default is an empty string.
+     *   - timeout (int): The timeout in milliseconds for the request. Default is 10000.
+     * @throws \InvalidArgumentException If splitPunct is not a string or timeout is not a positive number.
+     * @return array An array of associative arrays, each containing the short text and its base64-encoded audio.
+     */
+    public function getAllAudioBase64(string $text, array $options = []): array
+    {
+        $lang = $options['lang'] ?? 'en';
+        $slow = $options['slow'] ?? false;
+        $host = $options['host'] ?? 'https://translate.google.com';
+        $splitPunct = $options['splitPunct'] ?? '';
+        $timeout = $options['timeout'] ?? 10000;
+
+        $this->assertInputTypes($text, $lang, $slow, $host);
+
+        if (!is_string($splitPunct)) {
+            throw new \InvalidArgumentException('splitPunct should be a string');
+        }
+
+        if (!is_int($timeout) || $timeout <= 0) {
+            throw new \InvalidArgumentException('timeout should be a positive number');
+        }
+
+        $shortTextList = $this->splitLongText($text, ['splitPunct' => $splitPunct]);
+
+        $result = [];
         foreach ($shortTextList as $shortText) {
-            try {
-                $base64 = self::getAudioBase64($shortText, [
-                    'lang' => $lang,
-                    'slow' => $slow,
-                    'host' => $host,
-                    'timeout' => $timeout
-                ]);
-                $base64List[] = ['shortText' => $shortText, 'base64' => $base64];
-            } catch (Exception $e) {
-                // Log the error and continue with the next chunk
-                // Alternatively, you can choose to rethrow the exception
-                // For this example, we'll rethrow
-                throw new Exception('Failed to get audio for short text: "' . $shortText . '". Error: ' . $e->getMessage());
+            $base64 = $this->getAudioBase64($shortText, [
+                'lang' => $lang,
+                'slow' => $slow,
+                'host' => $host,
+                'timeout' => $timeout
+            ]);
+            $result[] = [
+                'shortText' => $shortText,
+                'base64' => $base64
+            ];
+        }
+
+        return $result;
+    }
+
+
+    /**
+     * Menggabungkan semua segmen audio base64 menjadi satu string base64 utuh.
+     *
+     * @param string $text Teks yang akan diubah menjadi audio.
+     * @param array $options Opsi tambahan.
+     * @throws \Exception Jika penggabungan audio gagal.
+     * @return string Audio gabungan dalam format base64.
+     */
+    public function getCombinedAudioBase64(string $text, array $options = []): string
+    {
+        $audioSegments = $this->getAllAudioBase64($text, $options);
+
+        if (empty($audioSegments)) {
+            throw new \Exception('Tidak ada konten audio yang diterima dari Google TTS');
+        }
+
+        $combinedBinary = '';
+        foreach ($audioSegments as $audio) {
+            if (!empty($audio['base64'])) {
+                $binaryData = base64_decode($audio['base64']);
+                if ($binaryData === false) {
+                    throw new \Exception('Gagal mendecode segmen audio base64');
+                }
+                $combinedBinary .= $binaryData;
+            } else {
+                throw new \Exception('Segmen konten audio kosong diterima dari Google TTS');
             }
         }
 
-        return $base64List;
+        return base64_encode($combinedBinary);
+    }
+
+    /**
+     * Generates long audio from the given text.
+     *
+     * @param string $text The text to be converted to audio.
+     * @param array $options An optional array of options. Default is an empty array.
+     *   - lang (string): The language of the text. Default is 'en'.
+     *   - slow (bool): Whether to slow down the speech. Default is false.
+     *   - host (string): The host URL for the translation service. Default is 'https://translate.google.com'.
+     *   - splitPunct (string): The punctuation to split the text by. Default is an empty string.
+     *   - timeout (int): The timeout in milliseconds for the request. Default is 10000.
+     * @return array An array of associative arrays, each containing the short text and its base64-encoded audio.
+     */
+    public static function generateLongAudio(string $text, array $options = []): array
+    {
+        $instance = new self();
+        return $instance->getAllAudioBase64($text, $options);
+    }
+
+    /**
+     * Generates audio from the given text.
+     *
+     * @param string $text The text to be converted to audio.
+     * @param array $options An optional array of options.
+     * @return string The base64-encoded audio.
+     */
+    public static function generateAudio($text, $options)
+    {
+        $instance = new self();
+        return $instance->getAudioBase64($text, $options);
     }
 }
