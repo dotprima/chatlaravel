@@ -7,9 +7,36 @@
 
         <title>{{ config('app.name', 'Laravel') }}</title>
 
+        <!-- Primary Meta Tags -->
+        <meta name="title" content="{{ config('app.name', 'Laravel') }}">
+        <meta name="description" content="Asisten AI untuk Pengadilan Agama Cirebon yang membantu mempermudah proses hukum dan memberikan informasi yang akurat dan cepat.">
+
+        <!-- Open Graph / Facebook -->
+        <meta property="og:type" content="website">
+        <meta property="og:url" content="{{ request()->url() }}">
+        <meta property="og:title" content="{{ config('app.name', 'Laravel') }}">
+        <meta property="og:description" content="Asisten AI untuk Pengadilan Agama Cirebon yang membantu mempermudah proses hukum dan memberikan informasi yang akurat dan cepat.">
+        <meta property="og:image" content="{{ asset('logo.png') }}">
+
+        <!-- Twitter -->
+        <meta property="twitter:card" content="summary_large_image">
+        <meta property="twitter:url" content="{{ request()->url() }}">
+        <meta property="twitter:title" content="{{ config('app.name', 'Laravel') }}">
+        <meta property="twitter:description" content="Asisten AI untuk Pengadilan Agama Cirebon yang membantu mempermudah proses hukum dan memberikan informasi yang akurat dan cepat.">
+        <meta property="twitter:image" content="{{ asset('logo.png') }}">
+
+        <!-- Keywords -->
+        <meta name="keywords" content="AI Assistant, Pengadilan Agama Cirebon, Hukum Agama, Asisten Hukum, Cirebon, Teknologi Hukum, Layanan Hukum AI">
+
+        <!-- Author -->
+        <meta name="author" content="Nama Anda atau Perusahaan Anda">
+
         <!-- Fonts -->
         <link rel="preconnect" href="https://fonts.bunny.net">
         <link href="https://fonts.bunny.net/css?family=figtree:400,500,600&display=swap" rel="stylesheet" />
+
+        <!-- Favicon -->
+        <link rel="icon" href="{{ asset('favicon.ico') }}" type="image/x-icon">
 
         <!-- Scripts -->
         @vite(['resources/css/app.css', 'resources/js/app.js'])
