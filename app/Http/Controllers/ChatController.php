@@ -223,26 +223,43 @@ class ChatController extends Controller
             if (trim($topicsResponse) != 'null') {
                 // Jika respons adalah JSON, lanjutkan memproses topik
                 $decodedTopics = json_decode($topicsResponse, true);
-
+            
                 if (isset($decodedTopics['topics']) && count($decodedTopics['topics']) > 0) {
-                    // Ambil semua topik dari respons
+                    // Ambil semua topik dari respons, lalu trim dan lowercase
                     $topics = array_map('strtolower', array_map('trim', $decodedTopics['topics']));
-
-                    // Query ke database untuk mencari fitur yang sesuai dengan semua topik
-                    $query = DB::table('link');
+            
+                    // Inisialisasi variabel untuk menyimpan daftar fitur
+                    $featuresList = "";
+            
+                    // Bangun ekspresi relevansi untuk mengurutkan berdasarkan jumlah kesamaan topik
+                    $relevanceExpression = "";
                     foreach ($topics as $topic) {
-                        $query->orWhere('name', 'LIKE', '%' . $topic . '%');
+                        // Pastikan untuk mengamankan input untuk mencegah SQL Injection
+                        $safeTopic = addslashes($topic);
+                        $relevanceExpression .= " + (LOWER(name) LIKE '%{$safeTopic}%')";
                     }
-
-                    $featuresFromDB = $query->get();
-
+                    // Hilangkan ' + ' di awal string
+                    $relevanceExpression = ltrim($relevanceExpression, ' + ');
+            
+                    // Query ke database dengan menghitung relevansi
+                    $featuresFromDB = DB::table('link')
+                        ->select('link.*')
+                        ->selectRaw("({$relevanceExpression}) as relevance")
+                        ->where(function ($query) use ($topics) {
+                            foreach ($topics as $topic) {
+                                $query->orWhereRaw("LOWER(name) LIKE ?", ['%' . strtolower($topic) . '%']);
+                            }
+                        })
+                        ->orderByDesc('relevance') // Urutkan berdasarkan relevansi secara menurun
+                        ->get();
+            
                     // Daftar fitur dan URL yang diambil dari database
                     if (!$featuresFromDB->isEmpty()) {
                         foreach ($featuresFromDB as $feature) {
                             $featuresList .= ucfirst($feature->name) . ": " . $feature->link . "\n";
                         }
-
-                        $search = "" . $featuresList . "
+            
+                        $search = "{$featuresList}
                         Jika pengguna meminta untuk membuka sebuah fitur, pastikan Anda hanya memberikan link yang sesuai dengan fitur yang ada. Format yang harus dikembalikan adalah:
                         {
                             \"action\": \"open_link\",
@@ -260,6 +277,7 @@ class ChatController extends Controller
                 Log::info('User did not request to open a link');
                 $featuresList = "";
             }
+            
 
             $finalPrompt = "Anda adalah Riska Assistant, sebuah asisten virtual yang diciptakan oleh Rizqi Abdul Karim, seorang insinyur perangkat lunak yang berfokus pada pengembangan sistem untuk pelayanan Pengadilan Agama Cirebon. Selain memberikan informasi tentang Pengadilan Agama Cirebon, Anda juga dapat memberikan informasi umum yang relevan sesuai permintaan, selama tetap mematuhi batasan yang ada.";
 
