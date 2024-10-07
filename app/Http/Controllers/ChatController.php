@@ -34,7 +34,7 @@ class ChatController extends Controller
                 $completionText = $this->chatCompletion($transcript);
 
                 // Decode the JSON result into an array
-                $completionArray = json_decode($completionText, true);
+                $completionArray = json_decode($completionText['text'], true);
 
                 // Check if 'action' and 'url' exist and are not null
                 if (isset($completionArray['action']) && isset($completionArray['url'])) {
@@ -43,7 +43,7 @@ class ChatController extends Controller
                     $responseText = $completionText;
                 } else {
                     // 2. Process Text-to-Speech (from answer to voice buffer)
-                    $voiceBuffer = $this->textToSpeech($completionText, $voice);
+                    $voiceBuffer = $this->textToSpeech($completionText['text'], $voice);
 
                     $responseText = $completionText;
                 }
@@ -59,7 +59,7 @@ class ChatController extends Controller
                 $completionText = $this->chatCompletion($transcript);
 
                 // Decode the JSON result into an array
-                $completionArray = json_decode($completionText, true);
+                $completionArray = json_decode($completionText['text'], true);
 
                 // Check if 'action' and 'url' exist and are not null
                 if (isset($completionArray['action']) && isset($completionArray['url'])) {
@@ -68,7 +68,7 @@ class ChatController extends Controller
                     $responseText = $completionText;
                 } else {
                     // 2. Process Text-to-Speech (from answer to voice buffer)
-                    $voiceBuffer = $this->textToSpeech($completionText, $voice);
+                    $voiceBuffer = $this->textToSpeech($completionText['text'], $voice);
 
                     $responseText = $completionText;
                 }
@@ -85,10 +85,24 @@ class ChatController extends Controller
             // Encode the audio buffer to Base64
             $voiceBase64 = $voiceBuffer;
 
+            $answer_action = $completionArray['answer'] ?? null;
+            $deskripsi = $responseText['description'] ?? null;
+
+            if ($answer_action) {
+                $answer_action = $this->textToSpeech($answer_action, $voice);
+            }
+
+            if ($deskripsi) {
+                $deskripsi = $this->textToSpeech($deskripsi, $voice);
+            }
+
+
             // Return the response text and audio data
             return response()->json([
+                'description_voice' => $deskripsi ?? null,
                 'question_text' => $transcript,
-                'response_text' => $responseText,
+                'answer_action_voice' => $answer_action ?? null,
+                'response_text' => $responseText['text'] ?? null,
                 'response_audio_base64' => $voiceBase64
             ], 200);
         } catch (\Exception $e) {
@@ -258,17 +272,22 @@ class ChatController extends Controller
                         foreach ($featuresFromDB as $feature) {
                             $featuresList .= ucfirst($feature->name) . ": " . $feature->link . "\n";
                         }
+
+                        $first = $featuresFromDB->first();
+                        $deskripsi = $first->description;
             
                         $search = "{$featuresList}
                         Jika pengguna meminta untuk membuka sebuah fitur, pastikan Anda hanya memberikan link yang sesuai dengan fitur yang ada. Format yang harus dikembalikan adalah:
                         {
                             \"action\": \"open_link\",
-                            \"url\": \"[URL yang sesuai]\"
+                            \"url\": \"[URL yang sesuai]\",
+                            \"answer\": \"[jawaban kamu , contoh baik saya akan membuka ...]\"
                         }
                         Pastikan untuk mengembalikan format JSON tanpa penjelasan tambahan. Jika tidak ada fitur yang sesuai, nyatakan bahwa fitur tidak ditemukan.";
                     } else {
                         $featuresList = "";
                     }
+                    
                 } else {
                     Log::info('No topics found in response');
                     $featuresList = "";
@@ -288,6 +307,11 @@ class ChatController extends Controller
                 $finalPrompt .= $search;
             }
 
+            $finalPrompt .= "jika pengguna meminta untuk menutup halaman , cukup berikan saja 
+                        {
+                            \"action\": \"close_link\",
+                            \"answer\": \"[jawaban kamu , contoh baik saya akan membuka ...]\"
+                        }";
             $finalPrompt .= "\n\nCatatan Penting:\n- Jangan memberikan informasi tentang nomor telepon atau email, meskipun diminta.";
 
             Log::info('topicsResponse: ' . $topicsResponse);
@@ -317,8 +341,22 @@ class ChatController extends Controller
 
             $result = json_decode($response->getBody()->getContents(), true);
 
+            // Pastikan 'choices', 'message', dan 'content' ada
+            if (isset($result['choices'][0]['message']['content'])) {
+                // Jika 'content' adalah string, ubah menjadi array sebelum menambahkan deskripsi
+                if (is_string($result['choices'][0]['message']['content'])) {
+                    $result['choices'][0]['message']['content'] = [
+                        'text' => $result['choices'][0]['message']['content'], // Simpan konten asli di 'text'
+                    ];
+                }
+            
+                // Tambahkan deskripsi ke dalam array 'content'
+                $result['choices'][0]['message']['content']['description'] = $deskripsi ?? null;
+            }
+            
             // Kembalikan hasil respons terakhir
             return $result['choices'][0]['message']['content'] ?? 'Error: Could not generate response';
+
         } catch (\Exception $e) {
             Log::error('Error in chatCompletion: ' . $e->getMessage());
             return 'Failed to generate response from ChatGPT';
