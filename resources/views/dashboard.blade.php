@@ -342,7 +342,24 @@
                 audioPlayer.src = audioUrl;
 
                 // Play audio
-                audioPlayer.play();
+
+                if (audioPlayer) {
+                    audioPlayer.play()
+                        .then(() => {
+                            console.log('Audio playback started');
+                            // Mainkan video saat audio mulai
+                            agentVideo.play();
+                            agentVideo.loop = true;
+                        })
+                        .catch(error => {
+                            console.error('Audio playback failed:', error);
+                            updateStatus('idle');
+                            togglePulse(false); // Hide pulse animation
+                            toggleLottie(false);
+                            toggleUIState(false);
+                            isSubmitting = false;
+                        });
+                }
 
                 // Remove any previous 'ended' event listener and add a new one
                 audioPlayer.removeEventListener('ended', handleAudioEnd);
@@ -424,7 +441,8 @@
                     playMultipleAudioResponses(audioQueue);
                 }
 
-                if (jsonResponse.url === 'https://gugatanmandiri.badilag.net' || jsonResponse.url === 'https://ecourt.mahkamahagung.go.id') {
+                if (jsonResponse.url === 'https://gugatanmandiri.badilag.net' || jsonResponse.url ===
+                    'https://ecourt.mahkamahagung.go.id') {
                     window.open(jsonResponse.url, '_blank'); // Membuka tab baru
                 } else {
                     // Close existing iframe if open

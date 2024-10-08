@@ -307,10 +307,10 @@ class ChatController extends Controller
                 $finalPrompt .= $search;
             }
 
-            $finalPrompt .= "jika pengguna meminta untuk menutup halaman , cukup berikan saja 
+            $finalPrompt .= "jika pengguna meminta untuk menutup halaman apapun , cukup berikan saja 
                         {
                             \"action\": \"close_link\",
-                            \"answer\": \"[jawaban kamu , contoh baik saya akan membuka ...]\"
+                            \"answer\": \"[jawaban kamu , contoh baik saya akan menutup ...]\"
                         }";
             $finalPrompt .= "\n\nCatatan Penting:\n- Jangan memberikan informasi tentang nomor telepon atau email, meskipun diminta.";
 
